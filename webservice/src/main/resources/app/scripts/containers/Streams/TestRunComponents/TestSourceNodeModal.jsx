@@ -204,7 +204,7 @@ class TestSourceNodeModal extends Component{
       lint: true
     };
     const {showLoading,inputData,entities,selectedTestCase,streamObj,activeTabKey,showFileError,fileName} = this.state;
-    const outputSidebar = <StreamsSidebar ref="StreamSidebar" streamObj={streamObj} streamType="output"/>;
+    const outputSidebar = <StreamsSidebar ref="StreamSidebar" streamObj={streamObj} streamKind="output"/>;
     return(
       <Tabs id="TestSourceForm" activeKey={activeTabKey} className="modal-tabs" onSelect={this.onSelectTab}>
         <Tab eventKey={1} title="Configuration" >

@@ -200,7 +200,7 @@ class TestSinkNodeModal extends Component{
       lint: true
     };
     const {showLoading,expectedOutputData,activeTabKey,streamObjArr,streamObj,showFileError,fileName} = this.state;
-    const inputSidebar = <StreamsSidebar ref="StreamSidebar" streamObj={streamObj || []} inputStreamOptions={streamObjArr} streamType="input"/>;
+    const inputSidebar = <StreamsSidebar ref="StreamSidebar" streamObj={streamObj || []} inputStreamOptions={streamObjArr} streamKind="input"/>;
     return(
       <div>
         {
