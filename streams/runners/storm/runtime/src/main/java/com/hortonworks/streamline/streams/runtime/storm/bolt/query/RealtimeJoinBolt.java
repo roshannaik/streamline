@@ -23,12 +23,14 @@ import com.google.common.annotations.VisibleForTesting;
 import com.google.common.collect.LinkedListMultimap;
 import com.hortonworks.streamline.streams.StreamlineEvent;
 import com.hortonworks.streamline.streams.common.StreamlineEventImpl;
+import org.apache.storm.Config;
 import org.apache.storm.task.OutputCollector;
 import org.apache.storm.task.TopologyContext;
 import org.apache.storm.topology.OutputFieldsDeclarer;
 import org.apache.storm.topology.base.BaseRichBolt;
 import org.apache.storm.tuple.Fields;
 import org.apache.storm.tuple.Tuple;
+import org.apache.storm.utils.TupleUtils;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -47,7 +49,7 @@ public class RealtimeJoinBolt extends BaseRichBolt  {
 
     public static final int NUM_STREAMS = 2; // currently we only support two stream joins
     JoinInfo[] joinInfos = new JoinInfo[NUM_STREAMS]; // 0=> from stream, 1=> joined stream
-//    private LinkedHashMap<String, JoinInfo> joinInfos = new LinkedHashMap<>(NUM_STREAMS);
+
     protected FieldSelector[] outputFields = null;   // specified via bolt.select() ... used in declaring Output fields
     private boolean streamLineProjection = false; // NOTE: Streamline Specific
     private String outputStream;    // output stream name
@@ -99,6 +101,22 @@ public class RealtimeJoinBolt extends BaseRichBolt  {
     @Override
     public void prepare(Map stormConf, TopologyContext context, OutputCollector collector) {
         this.collector = collector;
+    }
+
+    @Override
+    public Map<String, Object> getComponentConfiguration() {
+        // We setup tick tuples to expire tuples when one of the streams has time based retention
+        // to ensure expiration occurs even if there is no incoming data
+        Config conf = new Config();
+        if (needTicks())
+            conf.put(Config.TOPOLOGY_TICK_TUPLE_FREQ_SECS, 1);
+        return conf;
+    }
+
+    private boolean needTicks() {
+        long fromStreamRetentionMs = joinInfos[0].retentionTime==null ? 0 : joinInfos[0].retentionTime;
+        long joinStreamRetentionMs = joinInfos[1].retentionTime==null ? 0 : joinInfos[1].retentionTime;
+        return fromStreamRetentionMs>0  || joinStreamRetentionMs>0;
     }
 
     /**
@@ -277,6 +295,9 @@ public class RealtimeJoinBolt extends BaseRichBolt  {
         for (JoinInfo joinInfo : joinInfos) {
             joinInfo.expireAndAckTimedOutEntries(collector);
         }
+
+        if (TupleUtils.isTick(tuple))
+            return;
 
         try {
             String stream = streamKind.getStreamId(tuple);
