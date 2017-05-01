@@ -18,9 +18,6 @@
 
 package com.hortonworks.streamline.streams.layout.storm;
 
-import com.fasterxml.jackson.core.JsonProcessingException;
-import com.fasterxml.jackson.databind.ObjectMapper;
-
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
@@ -30,14 +27,18 @@ import java.util.stream.Stream;
 
 /* ---- Sample Json of whats expected from UI  ---
 {
-"from" : {"stream": "orders"},
-"join" : {"type" : "inner", "stream" : "adImpressions", "count" : 10, "dropDuplicates" : false},  # here we can have:  count/seconds/minutes/milliseconds
-"equal" :
-  [
-    { "firstKey" : "userID",    "secondKey" : "userid"},
-    { "firstKey" : "productID", "secondKey" : "productID"}
+"from" : {"stream": "orders", "seconds" : 10, "dropDuplicates" : false },
+
+
+"joins" : [
+    { "type" : "inner", "stream" : "adImpressions", "count" : 10, "dropDuplicates" : false,
+         "conditions" : [
+            [ "equal",  "adImpressions:userID",  "orders:userId" ],
+            [ "equalIgnoreCase", "product", "orders:product"]
+         ]
+     }
   ],
-  "outputKeys" : [ "userID", "orders:productID" ,"orderId", "impressionId" ],
+  "outputKeys" : [ "userID", "orders:product as product" ,"orderId", "impressionId" ],
   "outputStream" : "joinedStream1"
 }
  */
