@@ -21,8 +21,6 @@ package com.hortonworks.streamline.streams.runtime.storm.bolt.query;
 import com.amazonaws.services.cloudfront.model.InvalidArgumentException;
 import com.google.common.annotations.VisibleForTesting;
 import com.google.common.collect.LinkedListMultimap;
-import com.hortonworks.streamline.streams.StreamlineEvent;
-import com.hortonworks.streamline.streams.common.StreamlineEventImpl;
 import org.apache.storm.Config;
 import org.apache.storm.task.OutputCollector;
 import org.apache.storm.task.TopologyContext;
@@ -36,23 +34,48 @@ import org.slf4j.LoggerFactory;
 
 import java.io.Serializable;
 import java.util.*;
-import java.util.regex.Matcher;
-import java.util.regex.Pattern;
 import java.time.Duration;
 
 
 enum JoinType {INNER, LEFT, RIGHT, OUTER}
 
+/**
+ * Note: This class will get moved to Storm. This does not have any streamline specific code.
+ *       The Streamline specific customizations are in the derived class (SLRealtimeJoinBolt)
+ *
+ * Provides ability to join two streams. Features:
+ *    - Inner/left/right/outer joins are supported.
+ *    - Supports multikey joins
+ *    - Custom join comparators can be provided
+ *
+ ****  Examples: ****
+ *
+ *  1) -- Count based retention window. Join based on Stream ID. ---
+ *    new RealtimeJoinBolt(StreamKind.STREAM)
+ *            .from("purchases", 10, false )
+ *            .leftJoin("ads"  , 10, false, Cmp.ignoreCase("ads:product","purchases:product")
+ *                                        , Cmp.equal("userId", "purchases:userId") )
+ *            .select("orders:id, ads:userId as userid, ads:product as prod, price")
+ *            .withOutputStream("outStreamName");
+ *
+ *
+ *   2) -- Time based retention window. Join based on Source Component ID. ---
+ *    new RealtimeJoinBolt(StreamKind.COMPONENT)
+ *            .from("purchases", Duration.ofSeconds(10), false )
+ *            .leftJoin("ads",   Duration.ofSeconds(20), false, Cmp.ignoreCase("ads:product","purchases:product")
+ *                                                            , Cmp.equal("userId", "purchases:userId") )
+ *            .select("orders:id, ads:userId as userid, ads:product as prod, price")
+ *            .withOutputStream("outStreamName");
+ *
+ */
 public class RealtimeJoinBolt extends BaseRichBolt  {
     private static final Logger LOG = LoggerFactory.getLogger(RealtimeJoinBolt.class);
-    final static String EVENT_PREFIX = StreamlineEvent.STREAMLINE_EVENT + ".";
 
     public static final int NUM_STREAMS = 2; // currently we only support two stream joins
     JoinInfo[] joinInfos = new JoinInfo[NUM_STREAMS]; // 0=> from stream, 1=> joined stream
 
     protected FieldSelector[] outputFields = null;   // specified via bolt.select() ... used in declaring Output fields
-    private boolean streamLineProjection = false; // NOTE: Streamline Specific
-    private String outputStream;    // output stream name
+    protected String outputStream;    // output stream name
 
     private OutputCollector collector;
 
@@ -127,97 +150,90 @@ public class RealtimeJoinBolt extends BaseRichBolt  {
         this.streamKind = streamKind;
     }
 
-    // NOTE: streamline specific
-    /**
-     * Calls  RealtimeJoinBolt(StreamKind.STREAM)
-     */
-    public RealtimeJoinBolt() {
-        this(StreamKind.STREAM);
-    }
 
-    public RealtimeJoinBolt from(String stream, int retentionCount, boolean dropOlderDuplicates) {
+    public RealtimeJoinBolt from(String stream, int retentionCount, boolean unique) {
         if (fromStream!=null)
             throw new IllegalArgumentException("from() method can be called only once.");
         fromStream = stream;
-        this.joinInfos[0] = new JoinInfo(null, null, retentionCount, dropOlderDuplicates);
+        this.joinInfos[0] = new JoinInfo(null, null, retentionCount, unique);
         return this;
     }
 
-    public RealtimeJoinBolt from(String stream, Duration retentionTime, boolean dropOlderDuplicates) {
+    public RealtimeJoinBolt from(String stream, Duration retentionTime, boolean unique) {
         if (fromStream!=null)
             throw new IllegalArgumentException("from() method can be called only once.");
         fromStream = stream;
-        this.joinInfos[0] = new JoinInfo(null, retentionTime.toMillis(), null, dropOlderDuplicates);
+        this.joinInfos[0] = new JoinInfo(null, retentionTime.toMillis(), null, unique);
         return this;
     }
 
     // INNER JOINS
-    public RealtimeJoinBolt innerJoin(String stream, int retentionCount, boolean dropOlderDuplicates, JoinComparator... comparators) {
-        return joinHelperCountRetention(JoinType.INNER, stream, retentionCount, dropOlderDuplicates, comparators);
+    public RealtimeJoinBolt innerJoin(String stream, int retentionCount, boolean unique, JoinComparator... comparators) {
+        return joinHelperCountRetention(JoinType.INNER, stream, retentionCount, unique, comparators);
     }
 
-    public RealtimeJoinBolt innerJoin(String stream, Duration retentionTime, boolean dropOlderDuplicates, JoinComparator... comparators) {
-        return joinHelperTimeRetention(JoinType.INNER, stream, retentionTime, dropOlderDuplicates, comparators);
+    public RealtimeJoinBolt innerJoin(String stream, Duration retentionTime, boolean unique, JoinComparator... comparators) {
+        return joinHelperTimeRetention(JoinType.INNER, stream, retentionTime, unique, comparators);
     }
 
 
     // LEFT JOINS
-    public RealtimeJoinBolt leftJoin(String stream, int retentionCount, boolean dropOlderDuplicates, JoinComparator... comparators) {
-        return joinHelperCountRetention(JoinType.LEFT, stream, retentionCount, dropOlderDuplicates, comparators);
+    public RealtimeJoinBolt leftJoin(String stream, int retentionCount, boolean unique, JoinComparator... comparators) {
+        return joinHelperCountRetention(JoinType.LEFT, stream, retentionCount, unique, comparators);
     }
 
-    public RealtimeJoinBolt leftJoin(String stream, Duration retentionTime, boolean dropOlderDuplicates, JoinComparator... comparators) {
-        return joinHelperTimeRetention(JoinType.LEFT, stream, retentionTime, dropOlderDuplicates, comparators);
+    public RealtimeJoinBolt leftJoin(String stream, Duration retentionTime, boolean unique, JoinComparator... comparators) {
+        return joinHelperTimeRetention(JoinType.LEFT, stream, retentionTime, unique, comparators);
     }
 
 
     // RIGHT JOINS
-    public RealtimeJoinBolt rightJoin(String stream, int retentionCount, boolean dropOlderDuplicates, JoinComparator... comparators) {
-        return joinHelperCountRetention(JoinType.RIGHT, stream, retentionCount, dropOlderDuplicates, comparators);
+    public RealtimeJoinBolt rightJoin(String stream, int retentionCount, boolean unique, JoinComparator... comparators) {
+        return joinHelperCountRetention(JoinType.RIGHT, stream, retentionCount, unique, comparators);
     }
 
-    public RealtimeJoinBolt rightJoin(String stream, Duration retentionTime, boolean dropOlderDuplicates, JoinComparator... comparators) {
-        return joinHelperTimeRetention(JoinType.RIGHT, stream, retentionTime, dropOlderDuplicates, comparators);
+    public RealtimeJoinBolt rightJoin(String stream, Duration retentionTime, boolean unique, JoinComparator... comparators) {
+        return joinHelperTimeRetention(JoinType.RIGHT, stream, retentionTime, unique, comparators);
     }
 
 
     // OUTER JOINS
-    public RealtimeJoinBolt outerJoin(String stream, int retentionCount, boolean dropOlderDuplicates, JoinComparator... comparators) {
-        return joinHelperCountRetention(JoinType.OUTER, stream, retentionCount, dropOlderDuplicates, comparators);
+    public RealtimeJoinBolt outerJoin(String stream, int retentionCount, boolean unique, JoinComparator... comparators) {
+        return joinHelperCountRetention(JoinType.OUTER, stream, retentionCount, unique, comparators);
     }
 
-    public RealtimeJoinBolt outerJoin(String stream, Duration retentionTime, boolean dropOlderDuplicates, JoinComparator... comparators) {
-        return joinHelperTimeRetention(JoinType.OUTER, stream, retentionTime, dropOlderDuplicates, comparators);
+    public RealtimeJoinBolt outerJoin(String stream, Duration retentionTime, boolean unique, JoinComparator... comparators) {
+        return joinHelperTimeRetention(JoinType.OUTER, stream, retentionTime, unique, comparators);
     }
 
 
-    private RealtimeJoinBolt joinHelperCountRetention(JoinType joinType, String stream, int retentionCount, boolean dropOlderDuplicates, JoinComparator[] comparators) {
+    private RealtimeJoinBolt joinHelperCountRetention(JoinType joinType, String stream, int retentionCount, boolean unique, JoinComparator[] comparators) {
         // 1- Check stream names and make explicit any implicit stream names
         validateAndSetupStreamNames(comparators, stream);
-
         // 2- Check and set up the field names
         if (joinStream!=null)
             throw  new IllegalArgumentException("Join support limited to two streams currently.");
         if (retentionCount<=0)
             throw  new IllegalArgumentException("Retention count must be positive number");
 
-        this.joinInfos[1] = new JoinInfo(joinType, null, retentionCount, dropOlderDuplicates, comparators);
+        joinStream = stream;
+        this.joinInfos[1] = new JoinInfo(joinType, null, retentionCount, unique, comparators);
         return this;
     }
 
     private RealtimeJoinBolt joinHelperTimeRetention(JoinType joinType, String stream, Duration retentionTime,
-                                                     boolean dropOlderDuplicates, JoinComparator[] comparators) {
+                                                     boolean unique, JoinComparator[] comparators) {
         // 1- Check stream names and make explicit any implicit stream names
         validateAndSetupStreamNames(comparators, stream);
 
         // 2- Check and set up the field names
-        if (joinStream==null)
+        if (joinStream!=null)
             throw  new IllegalArgumentException("Join support limited to two streams currently.");
         if (retentionTime.toMillis()<=0)
             throw  new IllegalArgumentException("Retention count must be positive number");
 
-        this.joinInfos[1] = new JoinInfo(joinType, retentionTime.toMillis(), null, dropOlderDuplicates, comparators);
-
+        joinStream = stream;
+        this.joinInfos[1] = new JoinInfo(joinType, retentionTime.toMillis(), null, unique, comparators);
         return this;
     }
 
@@ -263,17 +279,6 @@ public class RealtimeJoinBolt extends BaseRichBolt  {
             outputFields[i] = new FieldSelector(fieldNames[i], streamKind);
         }
         return this;
-    }
-
-    /** Convenience method for Streamline that prefixes each keyname with 'streamline-event.'
-     *
-     * @param commaSeparatedKeys
-     * @return
-     */
-    public RealtimeJoinBolt streamlineSelect(String commaSeparatedKeys) {
-        String prefixedKeys = convertToStreamLineKeys(commaSeparatedKeys);
-        streamLineProjection = true;
-        return  select(prefixedKeys);
     }
 
     public RealtimeJoinBolt withOutputStream(String streamName) {
@@ -407,9 +412,6 @@ public class RealtimeJoinBolt extends BaseRichBolt  {
      * @return   project fields
      */
     protected List<Object> doProjection(Tuple tuple1, Tuple tuple2) {
-        if(streamLineProjection)
-            return doStreamlineProjection(tuple1, tuple2);
-
         ArrayList<Object> result = new ArrayList<>(outputFields.length);
         for ( int i = 0; i < outputFields.length; i++ ) {
             FieldSelector outField = outputFields[i];
@@ -421,75 +423,25 @@ public class RealtimeJoinBolt extends BaseRichBolt  {
         return result;
     }
 
-    /**
-     *  NOTE: Streamline specific convenience method. Creates output tuple as a StreamlineEvent
-     * @param tuple1  can be null
-     * @param tuple2  can be null
-     * @return
-     */
-    protected List<Object> doStreamlineProjection(Tuple tuple1, Tuple tuple2) {
-        StreamlineEventImpl.Builder eventBuilder = StreamlineEventImpl.builder();
-
-        for ( int i = 0; i < outputFields.length; i++ ) {
-            FieldSelector outField = outputFields[i];
-
-            Object field = outField.findField(tuple1) ;
-            if (field==null)
-                field = outField.findField(tuple2);
-            String outputKeyName = dropStreamLineEventPrefix(outField.outputName );
-            eventBuilder.put(outputKeyName, field); // adds null if field is not found in both tuples
-        }
-
-        StreamlineEventImpl slEvent = eventBuilder.dataSourceId("multiple sources").build();
-        return Collections.singletonList(slEvent);
-    }
-
-
-    // Prefixes each key with 'streamline-event.' Example:
-    //   arg = "stream1:key1, key2, stream2:key3.key4, key5"
-    //   result  = "stream1:streamline-event.key1, streamline-event.key2, stream2:streamline-event.key3.key4, streamline-event.key5"
-    private String convertToStreamLineKeys(String commaSeparatedKeys) {
-        String[] keyNames = commaSeparatedKeys.replaceAll("\\s+","").split(",");
-
-        String[] prefixedKeys = new String[keyNames.length];
-
-        for (int i = 0; i < keyNames.length; i++) {
-            FieldSelector fs = new FieldSelector(keyNames[i], streamKind);
-            if (fs.streamName==null)
-                prefixedKeys[i] =  EVENT_PREFIX +  fs.canonicalFieldName();
-            else
-                prefixedKeys[i] =  fs.streamName + ":" + EVENT_PREFIX + fs.canonicalFieldName();
-        }
-
-        return String.join(", ", prefixedKeys);
-    }
-
-    private static String dropStreamLineEventPrefix(String flattenedKey) {
-        int pos = flattenedKey.indexOf(EVENT_PREFIX);
-        if(pos==0)
-            return flattenedKey.substring(EVENT_PREFIX.length());
-        return flattenedKey.substring(0,pos) + flattenedKey.substring(pos+EVENT_PREFIX.length());
-    }
-
     class JoinInfo implements Serializable {
         final static long serialVersionUID = 1L;
 
         final JoinType joinType;              // null for first stream defined via from()
         final Long retentionTime;             // in millis. can be null.
         final Integer retentionCount;         // can be null
-        final Boolean dropOlderDuplicates;
+        final Boolean unique;
         final JoinComparator[] comparators;   // null for first stream defined via from()
 
         final ArrayDeque<Long> timeTracker;   // for time based retention. tracks time at which the tuples were received
         final LinkedListMultimap<String, TupleInfo> buffer;   // retention window. A [key->tuple] map.
 
-        public JoinInfo(JoinType joinType, Long retentionTimeMs, Integer retentionCount, Boolean dropOlderDuplicates, JoinComparator... comparators) {
+        public JoinInfo(JoinType joinType, Long retentionTimeMs, Integer retentionCount, Boolean unique, JoinComparator... comparators) {
             if (retentionCount!=null && retentionTimeMs!=null)
                 throw new IllegalArgumentException("Either retentionTimeMs or retentionCount must be null");
             this.joinType = joinType;
             this.retentionTime = retentionTimeMs;
             this.retentionCount = retentionCount;
-            this.dropOlderDuplicates = dropOlderDuplicates;
+            this.unique = unique;
             this.comparators = comparators;
             int estimateWindowSz = retentionCount != null ? retentionCount : 100_000;
             this.timeTracker = (retentionTimeMs!=null) ?  new ArrayDeque<Long>( estimateWindowSz ) : null;
@@ -519,7 +471,7 @@ public class RealtimeJoinBolt extends BaseRichBolt  {
 
         // returns a tuple if it has been expired (for count based retention case), or null
         public Tuple addTuple(String key, Tuple tuple) {
-            if (dropOlderDuplicates)
+            if (unique)
                 buffer.removeAll(key);
             buffer.put(key, new TupleInfo(tuple) );
 
@@ -543,108 +495,6 @@ public class RealtimeJoinBolt extends BaseRichBolt  {
 
     } // class JoinInfo
 }
-
-
-class FieldSelector implements Serializable {
-    final static long serialVersionUID = 2L;
-    final static Pattern fieldDescrPattern = Pattern.compile("(?:([\\w-]+?):)?([\\w.-]+)(?: +as +([\\w.-]+))? *");
-    final RealtimeJoinBolt.StreamKind streamKind;
-
-    String streamName;     // can be null;. StreamKind name can have '-' & '_'
-    String[] field;        // nested field "x.y.z"  becomes => String["x","y","z"]. Field names can contain '-' & '_'
-    private String alias;  // can be null. In 'strm:x.y.z as z', here z is the alias (alias can contain '-', '_' &'.')
-    String outputName;     // either "stream1:x.y.z" or "x.y.z" (if stream unspecified) or just alias.
-
-    public FieldSelector(String fieldDescriptor, RealtimeJoinBolt.StreamKind streamKind)  {
-        this.streamKind = streamKind;
-
-        int pos = fieldDescriptor.indexOf(':');
-        Matcher matcher = fieldDescrPattern.matcher(fieldDescriptor);
-        if (!matcher.find( ))
-            throw new IllegalArgumentException("'" +fieldDescriptor + "' is not a valid field descriptor. Correct Format: [streamid:]nested.field [as anAlias]");
-        this.streamName = matcher.group(1);     // can be null
-        String fieldDesc = matcher.group(2);
-        if (fieldDesc==null)
-            throw new IllegalArgumentException("'" +fieldDescriptor + "' is not a valid field descriptor. Correct Format: [streamid:]nested.field [as anAlias]");
-        this.field = fieldDesc.split("\\.");
-        this.alias = matcher.group(3);   // can be bykk
-
-        if (alias!=null)
-            outputName = alias;
-        else
-            outputName = (streamName==null) ? fieldDesc :  streamName+":"+fieldDesc ;
-    }
-
-    /**
-     * @param stream name of stream
-     * @param fieldDescriptor  Simple fieldDescriptor like "x.y.z" and without a stream qualifier prefix 'stream1:'.
-     */
-    public FieldSelector(String stream, String fieldDescriptor, RealtimeJoinBolt.StreamKind streamKind)  {
-        this(stream + ":" + fieldDescriptor, streamKind);
-        if(fieldDescriptor.indexOf(":")>=0) {
-            throw new IllegalArgumentException("Not expecting stream qualifier ':' in '" + fieldDescriptor
-                    + "'. Stream '" + stream +  "' is separately provided in this context");
-        }
-        this.streamName = stream;
-    }
-
-
-    // returns field name in x.y.z format (without stream name)
-    public String canonicalFieldName() {
-        return String.join(".", field);
-    }
-
-
-    @Override
-    public String toString() {
-        return outputName;
-    }
-
-    @Override
-    public boolean equals(Object o) {
-        if (this == o) return true;
-        try {
-            FieldSelector that = (FieldSelector) o;
-            return outputName != null ? outputName.equals(that.outputName) : that.outputName == null;
-        } catch (ClassCastException e) {
-            return false;
-        }
-    }
-
-    @Override
-    public int hashCode() {
-        return outputName != null ? outputName.hashCode() : 0;
-    }
-
-    // Extract the field from tuple. Can be a nested field (x.y.z)
-    // returns null if not found
-    public Object findField(Tuple tuple) {
-        if (tuple==null) {
-            return null;
-        }
-        // verify stream name matches, if stream name was specified
-        if ( streamName!=null &&
-                !streamName.equalsIgnoreCase( streamKind.getStreamId(tuple) ) ) {
-            return null;
-        }
-
-        Object curr = null;
-        for (int i=0; i < field.length; i++) {
-            if (i==0) {
-                if (tuple.contains(field[i]) )
-                    curr = tuple.getValueByField(field[i]);
-                else
-                    return null;
-            }  else  {
-                curr = ((Map) curr).get(field[i]);
-                if (curr==null)
-                    return null;
-            }
-        }
-        return curr;
-    }
-
-} // class FieldSelector
 
 
 class TupleInfo {

@@ -21,7 +21,7 @@ package com.hortonworks.streamline.streams.runtime.storm.bolt.query;
 import org.apache.storm.tuple.Tuple;
 
 public class Cmp {
-    private static class Equal extends JoinComparator {
+    static class Equal extends JoinComparator {
         public Equal(String fieldSelector1, String fieldSelector2) {
             super(fieldSelector1, fieldSelector2);
         }
@@ -43,9 +43,8 @@ public class Cmp {
         return new Equal(fieldSelector1, fieldSelector2);
     }
 
-
     // Case-insensitive comparison of two String fields
-    private static class IgnoreCase extends Equal {
+    static class IgnoreCase extends Equal {
         public IgnoreCase(String fieldSelector1, String fieldSelector2) {
             super(fieldSelector1, fieldSelector2);
         }
@@ -62,7 +61,7 @@ public class Cmp {
         }
     }
 
-    public static Equal ignoreCase(String fieldSelector1, String fieldSelector2) {
+    public static IgnoreCase ignoreCase(String fieldSelector1, String fieldSelector2) {
         return new IgnoreCase(fieldSelector1, fieldSelector2);
     }
 }
