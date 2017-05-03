@@ -23,12 +23,14 @@ import com.hortonworks.streamline.streams.common.StreamlineEventImpl;
 import org.apache.storm.Constants;
 import org.apache.storm.task.GeneralTopologyContext;
 import org.apache.storm.task.OutputCollector;
+import org.apache.storm.topology.base.BaseWindowedBolt;
 import org.apache.storm.tuple.*;
 import org.junit.Assert;
 import org.junit.Test;
 
 import java.time.Duration;
 import java.util.*;
+import java.util.concurrent.TimeUnit;
 
 public class TestRealtimeJoinBolt {
 
@@ -234,8 +236,8 @@ public class TestRealtimeJoinBolt {
         ArrayList<Tuple> adImpressionStream = makeStreamLineEventStream("ads", adImpressionFields, adImpressions);
 
         SLRealtimeJoinBolt bolt = new SLRealtimeJoinBolt()
-                .from("orders", Duration.ofSeconds(2), false)
-                .innerJoin("ads", Duration.ofSeconds(2), false,  SLCmp.equal("orders:userId", "ads:userId")
+                .from("orders", new BaseWindowedBolt.Duration(2, TimeUnit.SECONDS), false)
+                .innerJoin("ads", new BaseWindowedBolt.Duration(2, TimeUnit.SECONDS), false,  SLCmp.equal("orders:userId", "ads:userId")
                                                               , SLCmp.ignoreCase("ads:product","orders:product") )
                 .select("orders:id,ads:userId,product,price");
 

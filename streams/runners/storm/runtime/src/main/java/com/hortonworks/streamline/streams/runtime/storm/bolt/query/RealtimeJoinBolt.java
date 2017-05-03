@@ -51,6 +51,7 @@ enum JoinType {INNER, LEFT, RIGHT, OUTER}
  ****  Examples: ****
  *
  *  1) -- Count based retention window. Join based on Stream ID. ---
+ *
  *    new RealtimeJoinBolt(StreamKind.STREAM)
  *            .from("purchases", 10, false )
  *            .leftJoin("ads"  , 10, false, Cmp.ignoreCase("ads:product","purchases:product")
@@ -60,6 +61,7 @@ enum JoinType {INNER, LEFT, RIGHT, OUTER}
  *
  *
  *   2) -- Time based retention window. Join based on Source Component ID. ---
+ *
  *    new RealtimeJoinBolt(StreamKind.COMPONENT)
  *            .from("purchases", Duration.ofSeconds(10), false )
  *            .leftJoin("ads",   Duration.ofSeconds(20), false, Cmp.ignoreCase("ads:product","purchases:product")
@@ -174,6 +176,7 @@ public class RealtimeJoinBolt extends BaseRichBolt  {
 
     public RealtimeJoinBolt innerJoin(String stream, Duration retentionTime, boolean unique, JoinComparator... comparators) {
         return joinHelperTimeRetention(JoinType.INNER, stream, retentionTime, unique, comparators);
+        new Duration().
     }
 
 

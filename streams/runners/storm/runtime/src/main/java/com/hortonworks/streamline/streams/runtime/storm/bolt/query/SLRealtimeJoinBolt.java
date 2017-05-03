@@ -21,6 +21,7 @@ package com.hortonworks.streamline.streams.runtime.storm.bolt.query;
 import com.hortonworks.streamline.streams.StreamlineEvent;
 import com.hortonworks.streamline.streams.common.StreamlineEventImpl;
 import org.apache.storm.topology.OutputFieldsDeclarer;
+import org.apache.storm.topology.base.BaseWindowedBolt;
 import org.apache.storm.tuple.Fields;
 import org.apache.storm.tuple.Tuple;
 
@@ -79,9 +80,8 @@ public class SLRealtimeJoinBolt extends RealtimeJoinBolt {
         return (SLRealtimeJoinBolt) super.from(stream, retentionCount, unique);
     }
 
-    @Override
-    public SLRealtimeJoinBolt from(String stream, Duration retentionTime, boolean unique) {
-        return (SLRealtimeJoinBolt) super.from(stream, retentionTime, unique);
+    public SLRealtimeJoinBolt from(String stream, BaseWindowedBolt.Duration retentionTime, boolean unique) {
+        return (SLRealtimeJoinBolt) super.from(stream, Duration.ofMillis(retentionTime.value), unique);
     }
 
     @Override
@@ -89,9 +89,8 @@ public class SLRealtimeJoinBolt extends RealtimeJoinBolt {
         return (SLRealtimeJoinBolt) super.innerJoin(stream, retentionCount, unique, comparators);
     }
 
-    @Override
-    public SLRealtimeJoinBolt innerJoin(String stream, Duration retentionTime, boolean unique, JoinComparator... comparators) {
-        return (SLRealtimeJoinBolt) super.innerJoin(stream, retentionTime, unique, comparators);
+    public SLRealtimeJoinBolt innerJoin(String stream, BaseWindowedBolt.Duration retentionTime, boolean unique, JoinComparator... comparators) {
+        return (SLRealtimeJoinBolt) super.innerJoin(stream, Duration.ofMillis(retentionTime.value),, unique, comparators);
     }
 
     @Override
@@ -99,9 +98,8 @@ public class SLRealtimeJoinBolt extends RealtimeJoinBolt {
         return (SLRealtimeJoinBolt) super.leftJoin(stream, retentionCount, unique, comparators);
     }
 
-    @Override
-    public SLRealtimeJoinBolt leftJoin(String stream, Duration retentionTime, boolean unique, JoinComparator... comparators) {
-        return (SLRealtimeJoinBolt) super.leftJoin(stream, retentionTime, unique, comparators);
+    public SLRealtimeJoinBolt leftJoin(String stream, BaseWindowedBolt.Duration retentionTime, boolean unique, JoinComparator... comparators) {
+        return (SLRealtimeJoinBolt) super.leftJoin(stream, Duration.ofMillis(retentionTime.value),, unique, comparators);
     }
 
     @Override
@@ -109,9 +107,8 @@ public class SLRealtimeJoinBolt extends RealtimeJoinBolt {
         return (SLRealtimeJoinBolt) super.rightJoin(stream, retentionCount, unique, comparators);
     }
 
-    @Override
-    public SLRealtimeJoinBolt rightJoin(String stream, Duration retentionTime, boolean unique, JoinComparator... comparators) {
-        return (SLRealtimeJoinBolt) super.rightJoin(stream, retentionTime, unique, comparators);
+    public SLRealtimeJoinBolt rightJoin(String stream, BaseWindowedBolt.Duration retentionTime, boolean unique, JoinComparator... comparators) {
+        return (SLRealtimeJoinBolt) super.rightJoin(stream, Duration.ofMillis(retentionTime.value),, unique, comparators);
     }
 
     @Override
@@ -119,9 +116,8 @@ public class SLRealtimeJoinBolt extends RealtimeJoinBolt {
         return (SLRealtimeJoinBolt) super.outerJoin(stream, retentionCount, unique, comparators);
     }
 
-    @Override
-    public SLRealtimeJoinBolt outerJoin(String stream, Duration retentionTime, boolean unique, JoinComparator... comparators) {
-        return (SLRealtimeJoinBolt) super.outerJoin(stream, retentionTime, unique, comparators);
+    public SLRealtimeJoinBolt outerJoin(String stream, BaseWindowedBolt.Duration retentionTime, boolean unique, JoinComparator... comparators) {
+        return (SLRealtimeJoinBolt) super.outerJoin(stream, Duration.ofMillis(retentionTime.value),, unique, comparators);
     }
 
     /** Convenience method for Streamline that prefixes each keyname with 'streamline-event.'
@@ -188,18 +184,3 @@ public class SLRealtimeJoinBolt extends RealtimeJoinBolt {
     }
 }
 
-// Streamline specific join comparators
-class SLCmp {
-
-    public static Cmp.Equal equal(String fieldSelector1, String fieldSelector2) {
-        String fs1 = SLRealtimeJoinBolt.insertStreamlinePrefix(fieldSelector1);
-        String fs2 = SLRealtimeJoinBolt.insertStreamlinePrefix(fieldSelector2);
-        return Cmp.equal(fs1, fs2);
-    }
-
-    public static Cmp.IgnoreCase ignoreCase(String fieldSelector1, String fieldSelector2) {
-        String fs1 = SLRealtimeJoinBolt.insertStreamlinePrefix(fieldSelector1);
-        String fs2 = SLRealtimeJoinBolt.insertStreamlinePrefix(fieldSelector2);
-        return Cmp.ignoreCase(fs1, fs2);
-    }
-}
