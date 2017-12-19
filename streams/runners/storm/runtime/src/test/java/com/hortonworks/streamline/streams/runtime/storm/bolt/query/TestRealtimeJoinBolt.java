@@ -332,8 +332,8 @@ public class TestRealtimeJoinBolt {
         ArrayList<Tuple> adImpressionStream = makeStreamLineEventStream("ads", adImpressionFields, adImpressions);
 
         SLRealtimeJoinBolt bolt = new SLRealtimeJoinBolt()
-                .from("orders", new BaseWindowedBolt.Duration(2, TimeUnit.SECONDS), false)
-                .innerJoin("ads", new BaseWindowedBolt.Duration(2, TimeUnit.SECONDS), false,  SLCmp.equal("orders:userId", "ads:userId")
+                .from("orders", 2000, false)
+                .innerJoin("ads", 2000, false,  SLCmp.equal("orders:userId", "ads:userId")
                                                               , SLCmp.ignoreCase("ads:product","orders:product") )
                 .select("orders:id,ads:userId,product,price");
 
